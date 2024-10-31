@@ -1,24 +1,21 @@
-import logo from './logo.svg';
-import './App.css';
+import React from 'react';
+import { Web3ReactProvider } from '@web3-react/core';
+import { ethers } from 'ethers';
+import GaslessTransferForm from './components/GaslessTransferForm';
+import WalletConnect from './components/WalletConnect';
+import CreateIntentForm from './components/createIntent';
+
+function getLibrary(provider) {
+  return new ethers.providers.Web3Provider(provider);
+}
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Web3ReactProvider getLibrary={getLibrary}>
+      <WalletConnect />
+      <GaslessTransferForm />
+      <CreateIntentForm />
+    </Web3ReactProvider>
   );
 }
 
