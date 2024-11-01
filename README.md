@@ -59,6 +59,7 @@ The suite leverages:
   - Updates the confirmations count for the transaction.
   - Emits a TransactionConfirmed event.
 
-
-
-
+# Frontend Requirements 
+- Connecting the wallet
+- Sign and transfer the permit
+- Create Intents using Intent Manager
