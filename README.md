@@ -1,144 +1,64 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const Permit2ABI = require("./Permit2.json");
-describe("GaslessTransfer", function () {
-  let gaslessTransfer;
-  let mockToken;
-  let permit2;
-  let owner;
-  let relayer;
-  let recipient;
-  let other;
+# Treasury DAO Dapp
 
-  beforeEach(async function () {
-    [owner, relayer, recipient, other] = await ethers.getSigners();
+## How to build
+- Clone both the branch on local
+- Then Clone the permit2 repository as they don't have a npm sdk for contracts,
+- ```mkdir lib```   ```cd lib```  ```git clone https://github.com/Uniswap/permit2.git```
+- Install all Packages ```npm install```
+- Compile the Contracts ```npx hardhat compile```
+- Run the tests ```npx hardhat test```
 
-    // Deploy MockToken (ERC20)
-    const MockToken = await ethers.getContractFactory("ERC20Mock");
-    mockToken = await MockToken.deploy("MockToken", "MTK", owner.address,ethers.parseEther("10000"));
-    await mockToken.waitForDeployment();
+```Note: All contracts address are directly presented in frontend deployed on Sepolia ETH ```
 
-    // Deploy MockPermit2 (for testing purposes)
-    const MockPermit2 = new ethers.ContractFactory(Permit2ABI.abi, Permit2ABI.bytecode, owner);
-    permit2 = await MockPermit2.deploy();
-    await permit2.waitForDeployment();
-    console.log(permit2.target)
-    // Deploy GaslessTransfer contract
-    const GaslessTransfer = await ethers.getContractFactory("GaslessTransfer");
-    gaslessTransfer = await GaslessTransfer.deploy(permit2.target, relayer.address);
-    await gaslessTransfer.waitForDeployment();
-  });
+### Build the Frontend:
+- ```npm install``` then ```npm start```
 
-  it("Should execute a gasless transfer successfully", async function () {
-    const amount = ethers.parseEther("10");
-    const nonce = 0;
-    const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+# Dependencies
 
-    // Owner approves permit2 to spend tokens (simulate permit signature)
-    await mockToken.connect(owner).approve(permit2.target , amount);
+The suite leverages:
 
-    // Simulate EIP-712 signature (for testing, we bypass actual signature)
+- Chai for assertions.
+- Hardhat for Ethereum smart contract deployment and testing.
+- Ethers.js for blockchain interaction.
+- Permit2 SDK for constructing permit data required for the EIP-712 signatures.
+- Web3Modal for frontend wallet integration
 
-    const domain = {
-      name: 'Permit2',
-      version: '1',
-      chainId: 1, // Hardhat Network chain ID
-      verifyingContract: permit2.target,
-    };
-    
-    const types = {
-      PermitTransferFrom: [
-        { name: 'permitted', type: 'TokenPermissions' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' },
-      ],
-      TokenPermissions: [
-        { name: 'token', type: 'address' },
-        { name: 'amount', type: 'uint256' },
-      ],
-    };
-    
-    const value = {
-      permitted: {
-        token: mockToken.target,
-        amount: amount.toString(),
-      },
-      nonce: nonce,
-      deadline: deadline,
-    };
-    
-    // Sign the permit
-    const signature = await owner.signTypedData(domain, types, value);
-    
+# Contracts:
+  - GaslessTransfer.sol
+  - IntentManager.sol
+  - AcrossBridge.sol
+  - MultiSignWallet.sol
 
-    // Relayer calls gaslessTransfer
-    await expect(
-      gaslessTransfer
-        .connect(relayer)
-        .gaslessTransfer(
-          mockToken.target,
-          amount,
-          nonce,
-          deadline,
-          signature,
-          recipient.address
-        )
-    )
-      .to.emit(gaslessTransfer, "GaslessTransferExecuted")
-      .withArgs(relayer.address, recipient.address, mockToken.target, amount);
-    // Check recipient balance
-    const recipientBalance = await mockToken.balanceOf(recipient.address);
-    expect(recipientBalance).to.equal(amount);
-  });
+# Tests:
+## GaslessTransfer.sol
+- This Contracts helps in signing and transferring the amount.
+- The User can set a ```amountAllowed``` and the amount he want's to transfer ```amountTransfer```
+- Though the transaction are not completely gasless ( because of gas involved in signature and approval of tokens) but if would user if he want's to request multiple transaction with ```amountTransfer<amountAllowed && block.timestamp()<=deadlineTime```
+- I have integrated the contract with the frontend for testing via directly metmask on the Sepolia Eth Chain.
 
-  it("Should fail if called by someone other than the relayer", async function () {
-    const amount = ethers.utils.parseEther("10");
-    const nonce = 1;
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const signature = "0x";
+## IntentManager.sol
+  - **Create Intent**: Help's create a intent with the frequency, amount, token, startTime
+  - **Execute Intent**:
+    - **Below Threshold**: If the transaction is above Threshold it gets automatically executed.
+    - **Above Threshold**: If the transaction if above threshold the MultiSignWallet comes into picture.
+   - **Cancel Intent**: If the owner request to cancel the intent it will be deleted
+   - **Prevents execution Before the next execution**
+
+## MultiSignWallet.sol
+(Note: In this script there will be 3 signers )
+
+**submitTransaction**
+-
+ - Allows an owner to submit a transaction.
+ - Creates a new transaction and stores it in the transactions mapping.
+ - Emits a ```TransactionCreated``` event.
+
+**confirmTransaction**
+ - 
+  - Allows an owner to confirm a transaction if they haven’t done so already.
+  - Updates the confirmations count for the transaction.
+  - Emits a TransactionConfirmed event.
 
 
-    
-    await expect(
-      gaslessTransfer
-        .connect(other)
-        .gaslessTransfer(
-          mockToken.address,
-          amount,
-          nonce,
-          deadline,
-          signature,
-          recipient.address
-        )
-    ).to.be.revertedWith("Only relayer can execute gasless transfers");
-  });
 
-  it("Should update the relayer correctly", async function () {
-    // Assuming the owner can update the relayer
-    await gaslessTransfer.connect(owner).updateRelayer(other.address);
 
-    const newRelayer = await gaslessTransfer.relayer();
-    expect(newRelayer).to.equal(other.address);
-  });
-
-  it("Should fail if the signature is invalid", async function () {
-    const amount = ethers.utils.parseEther("10");
-    const nonce = 0;
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const signature = "0x";
-
-    // Relayer calls gaslessTransfer with invalid signature
-    await expect(
-      gaslessTransfer
-        .connect(relayer)
-        .gaslessTransfer(
-          mockToken.address,
-          amount,
-          nonce,
-          deadline,
-          signature,
-          recipient.address
-        )
-    ).to.be.revertedWith("Invalid permit");
-  });
-});
