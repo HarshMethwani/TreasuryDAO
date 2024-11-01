@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useWeb3React } from '@web3-react/core';
 import { ethers } from 'ethers';
-import  IntentManagerABI from '../abi/IntentManager.json';
+import  IntentManagerAB from '../abi/IntentManager.json';
 
-IntentManagerABI = IntentManagerABI.abi;
+const IntentManagerABI = IntentManagerAB.abi;
 function CreateIntentForm() {
   const { account, library, active } = useWeb3React();
   const [token, setToken] = useState('');
